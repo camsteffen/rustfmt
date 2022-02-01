@@ -15,8 +15,12 @@ use crate::rustfmt_diff::{make_diff, print_diff, DiffLine, Mismatch, ModifiedChu
 use crate::source_file;
 use crate::{is_nightly_channel, FormatReport, FormatReportFormatterBuilder, Input, Session};
 
+use cargo_fmt::{CargoFmtStrategy, Verbosity};
 use rustfmt_config_proc_macro::nightly_only_test;
 
+#[allow(dead_code)]
+#[path = "../cargo-fmt/lib.rs"]
+mod cargo_fmt;
 mod configuration_snippet;
 mod mod_resolver;
 mod parser;
@@ -382,36 +386,23 @@ fn idempotence_tests() {
 #[test]
 fn self_tests() {
     init_log();
-    let mut files = get_test_files(Path::new("tests"), false);
-    let bin_directories = vec!["cargo-fmt", "git-rustfmt", "bin", "format-diff"];
-    for dir in bin_directories {
-        let mut path = PathBuf::from("src");
-        path.push(dir);
-        path.push("main.rs");
-        files.push(path);
-    }
-    files.push(PathBuf::from("src/lib.rs"));
-
-    let (reports, count, fails) = check_files(files, &Some(PathBuf::from("rustfmt.toml")));
-    let mut warnings = 0;
-
-    // Display results.
-    println!("Ran {} self tests.", count);
-    assert_eq!(fails, 0, "{} self tests failed", fails);
-
-    for format_report in reports {
-        println!(
-            "{}",
-            FormatReportFormatterBuilder::new(&format_report).build()
-        );
-        warnings += format_report.warning_count();
-    }
-
-    assert_eq!(
-        warnings, 0,
-        "Rustfmt's code generated {} warnings",
-        warnings
-    );
+    let rustfmt_path = {
+        let mut path = env::current_exe().unwrap();
+        path.pop();
+        path.set_file_name(format!("rustfmt{}", env::consts::EXE_SUFFIX));
+        path
+    };
+    // `All` needed to include config_proc_macro
+    let strategy = CargoFmtStrategy::All;
+    let status = cargo_fmt::format_crate(
+        &rustfmt_path,
+        Verbosity::Normal,
+        &strategy,
+        vec!["--check".to_owned()],
+        None,
+    )
+    .unwrap();
+    assert_eq!(status, 0);
 }
 
 #[test]
